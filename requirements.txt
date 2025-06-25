@@ -1,33 +1,10 @@
-# Core Dependencies - Railway Compatible Versions (Lightweight)
-streamlit==1.28.1
+# Ultra-Refined Railway Trading Bot - Minimal Dependencies
+oandapyV20==0.6.3
 pandas==2.0.3
 numpy==1.24.3
 requests==2.31.0
-
-# Trading & Financial Data
-yfinance==0.2.18
-oandapyV20>=0.6.3
-
-# Data Visualization (Essential only)
-plotly==5.17.0
-
-# Date & Time Handling
-pytz==2023.3
-python-dateutil==2.8.2
-
-# Web Scraping & APIs
-beautifulsoup4==4.12.2
-feedparser==6.0.10
-
-# Utilities
-tqdm==4.65.0
-python-dotenv==1.0.0
-
-# Technical Analysis
-ta==0.11.0
-
-# Scheduling for Railway bot
 schedule==1.2.0
-
-# Basic NLP (lightweight alternative to transformers)
 textblob==0.17.1
+typing-extensions==4.7.1
+pytz==2023.3
+python-dotenv==1.0.0 

@@ -1,0 +1,122 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Trading data (keep private)
+*.csv
+*.json
+backtest_results*
+transactions_*
+oanda_comprehensive_analysis*
+
+# Other trading bots (exclude from ultra-refined deployment)
+src/railway_trading_bot.py
+src/refined_railway_trading_bot.py
+src/live_trading_bot.py
+src/sniper_bot.py
+src/enhanced_sniper_bot.py
+src/forex_*
+src/streamlit_*
+src/mobile_*
+src/background_*
+src/*backtest*
+src/*report*
+src/*demo*
+src/*app*
+
+# Analysis files
+analyze_*
+strategy_*
+multi_*
+backtest_*
+realistic_*
+compound_*
+railway_log_*
+alpha_vantage_*
+real_data_*
+quick_*
+forex_trading_improvements.py
+oanda_comprehensive_analysis.py
+
+# HTML reports
+*.html
+
+# Deployment files for other bots
+deploy_to_railway.py
+setup_live_trading.py
+start_background_trader.py
+
+# Documentation (keep only essential)
+STRATEGY_*
+PHASE_*
+FREE_*
+UPGRADE_*
+SERIOUS_*
+TRADING_*
+POSITION_*
+STREAMLIT_*
+UI_*
+PRODUCTION_*
+FINAL_*
+OPPORTUNITY_*
+MOBILE_*
+GETTING_*
+FOREX_*
+DEPLOYMENT_GUIDE.md
+
+# Config directories
+.devcontainer/
+.streamlit/
+configs/
+examples/
+models/
+notebooks/
+outputs/
+data/ 

@@ -597,10 +597,17 @@ class UltraRefinedRailwayTradingBot:
             for position in open_positions:
                 # Get trade record
                 trade_ids = position.get('tradeIDs', [])
+                
+                # Handle case where tradeIDs might be a single value instead of a list
+                if isinstance(trade_ids, (str, int, float)):
+                    trade_ids = [trade_ids]
+                elif not isinstance(trade_ids, list):
+                    trade_ids = []
+                    
                 if not trade_ids:
                     continue
                 
-                trade_record = self.performance_tracker.get_trade_record(trade_ids[0])
+                trade_record = self.performance_tracker.get_trade_record(str(trade_ids[0]))
                 if not trade_record:
                     continue
                 
@@ -644,7 +651,7 @@ class UltraRefinedRailwayTradingBot:
                         current_price = self.get_current_price(instrument.replace('_', '/'))
                         if current_price:
                             self.performance_tracker.update_trade_outcome(
-                                trade_ids[0],
+                                str(trade_ids[0]),
                                 current_price,
                                 'CLOSED_TIME',
                                 reason
@@ -672,10 +679,17 @@ class UltraRefinedRailwayTradingBot:
                 
                 # Get trade record
                 trade_ids = position.get('tradeIDs', [])
+                
+                # Handle case where tradeIDs might be a single value instead of a list
+                if isinstance(trade_ids, (str, int, float)):
+                    trade_ids = [trade_ids]
+                elif not isinstance(trade_ids, list):
+                    trade_ids = []
+                    
                 if not trade_ids:
                     continue
                 
-                trade_record = self.performance_tracker.get_trade_record(trade_ids[0])
+                trade_record = self.performance_tracker.get_trade_record(str(trade_ids[0]))
                 if not trade_record:
                     continue
                 
@@ -786,137 +800,6 @@ class UltraRefinedRailwayTradingBot:
         
         return True
     
-    def execute_ultra_refined_trade(self, signal: dict, account_balance: float):
-        """Execute trade with all improvements implemented."""
-        try:
-            pair = signal['pair']
-            action = signal['signal_type']
-            confidence = signal['confidence']
-            
-            # Enhanced signal filtering
-            passed, rejection_reason = self.enhanced_signal_filtering(signal)
-            if not passed:
-                logger.info(f"❌ Signal rejected: {rejection_reason}")
-                return None
-            
-            # Check daily limits
-            if not self.check_daily_limits():
-                return None
-            
-            # Calculate stop distance in pips
-            entry_price = signal['entry_price']
-            stop_loss = signal['stop_loss']
-            pip_size = 0.01 if 'JPY' in pair else 0.0001
-            
-            if action == "BUY":
-                stop_distance_pips = (entry_price - stop_loss) / pip_size
-            else:
-                stop_distance_pips = (stop_loss - entry_price) / pip_size
-            
-            # Calculate position size with accurate pip values
-            position_size = self.calculate_dynamic_position_size(account_balance, pair, stop_distance_pips)
-            
-            # Check margin availability
-            margin_check = self.trader.check_margin_availability(pair, position_size)
-            if not margin_check['available']:
-                logger.warning(f"⚠️ Insufficient margin: {margin_check['reason']}")
-                return None
-            
-            # Execute the trade
-            order_data = {
-                'pair': pair,
-                'signal_type': action,
-                'entry_price': entry_price,
-                'target_price': signal['target_price'],
-                'stop_loss': stop_loss,
-                'confidence': confidence,
-                'units': position_size if action == "BUY" else -position_size,
-                'risk_amount': account_balance * self.base_risk_per_trade
-            }
-            
-            order_id = self.trader.place_market_order(order_data)
-            
-            if order_id:
-                # Calculate expected profit/loss
-                pip_value = self.calculate_accurate_pip_value(pair, position_size)
-                
-                if action == "BUY":
-                    target_pips = (signal['target_price'] - entry_price) / pip_size
-                    stop_pips = (entry_price - stop_loss) / pip_size
-                else:
-                    target_pips = (entry_price - signal['target_price']) / pip_size
-                    stop_pips = (stop_loss - entry_price) / pip_size
-                
-                expected_profit = target_pips * pip_value
-                expected_loss = -stop_pips * pip_value
-                risk_reward_ratio = target_pips / stop_pips if stop_pips > 0 else 0
-                
-                # Record the trade
-                trade_record = EnhancedTradeRecord(
-                    trade_id=str(order_id),
-                    timestamp=datetime.now(),
-                    pair=pair,
-                    signal_type=action,
-                    confidence=confidence,
-                    entry_price=entry_price,
-                    target_price=signal['target_price'],
-                    stop_loss=stop_loss,
-                    units=position_size,
-                    margin_used=margin_check['margin_required'],
-                    expected_profit=expected_profit,
-                    expected_loss=expected_loss,
-                    risk_reward_ratio=risk_reward_ratio,
-                    status="OPEN"
-                )
-                
-                self.performance_tracker.add_trade(trade_record)
-                self.daily_trades += 1
-                
-                logger.info(f"✅ ULTRA-REFINED TRADE EXECUTED:")
-                logger.info(f"   📊 {pair} {action} | Order ID: {order_id}")
-                logger.info(f"   💰 Position Size: {position_size} units")
-                logger.info(f"   🎯 Entry: {entry_price:.5f}")
-                logger.info(f"   🛡️  Stop Loss: {stop_loss:.5f} ({stop_pips:.1f} pips)")
-                logger.info(f"   🎯 Take Profit: {signal['target_price']:.5f} ({target_pips:.1f} pips)")
-                logger.info(f"   📈 Risk/Reward: {risk_reward_ratio:.2f}")
-                logger.info(f"   💵 Expected P&L: +${expected_profit:.2f} / -${abs(expected_loss):.2f}")
-                
-                return order_id
-            
-        except Exception as e:
-            logger.error(f"❌ Error executing ultra-refined trade: {e}")
-            return None
-    
-    def real_time_monitoring_loop(self):
-        """Continuous monitoring loop for real-time updates."""
-        while not self.stop_monitoring:
-            try:
-                # Update MAE/MFE for open trades
-                open_positions = self.trader.get_open_positions()
-                
-                for position in open_positions:
-                    instrument = position['instrument']
-                    pair = instrument.replace('_', '/')
-                    current_price = self.get_current_price(pair)
-                    
-                    if current_price:
-                        trade_ids = position.get('tradeIDs', [])
-                        if trade_ids:
-                            self.performance_tracker.update_real_time_metrics(trade_ids[0], current_price)
-                
-                # Update trailing stops
-                self.update_trailing_stops()
-                
-                # Check time-based exits
-                self.monitor_time_based_exits()
-                
-                # Sleep for 30 seconds before next update
-                time.sleep(30)
-                
-            except Exception as e:
-                logger.error(f"❌ Error in monitoring loop: {e}")
-                time.sleep(60)  # Wait longer on error
-    
     def scan_for_ultra_refined_signals(self):
         """Scan for high-quality trading signals with all improvements."""
         try:
@@ -949,9 +832,10 @@ class UltraRefinedRailwayTradingBot:
                     # Generate signal
                     signal = self.signal_generator.generate_signal(pair)
                     
-                    if signal and signal.get('signal_type') != 'HOLD':
+                    # Check if signal exists and is not HOLD
+                    if signal and signal.signal_type != 'HOLD':
                         signals_found += 1
-                        logger.info(f"📡 Signal found for {pair}: {signal['signal_type']} (Confidence: {signal['confidence']:.1%})")
+                        logger.info(f"📡 Signal found for {pair}: {signal.signal_type} (Confidence: {signal.confidence:.1%})")
                         
                         # Execute if it passes all filters
                         order_id = self.execute_ultra_refined_trade(signal, account_balance)
@@ -973,6 +857,163 @@ class UltraRefinedRailwayTradingBot:
                 
         except Exception as e:
             logger.error(f"❌ Error in signal scanning: {e}")
+    
+    def execute_ultra_refined_trade(self, signal, account_balance: float):
+        """Execute trade with all improvements implemented."""
+        try:
+            # Access ForexSignal object attributes directly
+            pair = signal.pair
+            action = signal.signal_type
+            confidence = signal.confidence
+            
+            # Convert ForexSignal to dictionary format for enhanced_signal_filtering
+            signal_dict = {
+                'pair': signal.pair,
+                'signal_type': signal.signal_type,
+                'entry_price': signal.entry_price,
+                'target_price': signal.target_price,
+                'stop_loss': signal.stop_loss,
+                'confidence': signal.confidence,
+                'pips_target': signal.pips_target,
+                'pips_risk': signal.pips_risk,
+                'risk_reward_ratio': signal.risk_reward_ratio,
+                'reason': signal.reason,
+                'timestamp': signal.timestamp,
+                'news_sentiment': signal.news_sentiment,
+                'technical_score': signal.technical_score,
+                'atr': signal.atr
+            }
+            
+            # Enhanced signal filtering
+            passed, rejection_reason = self.enhanced_signal_filtering(signal_dict)
+            if not passed:
+                logger.info(f"❌ Signal rejected: {rejection_reason}")
+                return None
+            
+            # Check daily limits
+            if not self.check_daily_limits():
+                return None
+            
+            # Calculate stop distance in pips
+            entry_price = signal.entry_price
+            stop_loss = signal.stop_loss
+            pip_size = 0.01 if 'JPY' in pair else 0.0001
+            
+            if action == "BUY":
+                stop_distance_pips = (entry_price - stop_loss) / pip_size
+            else:
+                stop_distance_pips = (stop_loss - entry_price) / pip_size
+            
+            # Calculate position size with accurate pip values
+            position_size = self.calculate_dynamic_position_size(account_balance, pair, stop_distance_pips)
+            
+            # Check margin availability
+            margin_check = self.trader.check_margin_availability(pair, position_size)
+            if not margin_check['available']:
+                logger.warning(f"⚠️ Insufficient margin: {margin_check['reason']}")
+                return None
+            
+            # Execute the trade
+            order_data = {
+                'pair': pair,
+                'signal_type': action,
+                'entry_price': entry_price,
+                'target_price': signal.target_price,
+                'stop_loss': stop_loss,
+                'confidence': confidence,
+                'units': position_size if action == "BUY" else -position_size,
+                'risk_amount': account_balance * self.base_risk_per_trade
+            }
+            
+            order_id = self.trader.place_market_order(order_data)
+            
+            if order_id:
+                # Calculate expected profit/loss
+                pip_value = self.calculate_accurate_pip_value(pair, position_size)
+                
+                if action == "BUY":
+                    target_pips = (signal.target_price - entry_price) / pip_size
+                    stop_pips = (entry_price - stop_loss) / pip_size
+                else:
+                    target_pips = (entry_price - signal.target_price) / pip_size
+                    stop_pips = (stop_loss - entry_price) / pip_size
+                
+                expected_profit = target_pips * pip_value
+                expected_loss = -stop_pips * pip_value
+                risk_reward_ratio = target_pips / stop_pips if stop_pips > 0 else 0
+                
+                # Record the trade
+                trade_record = EnhancedTradeRecord(
+                    trade_id=str(order_id),
+                    timestamp=datetime.now(),
+                    pair=pair,
+                    signal_type=action,
+                    confidence=confidence,
+                    entry_price=entry_price,
+                    target_price=signal.target_price,
+                    stop_loss=stop_loss,
+                    units=position_size,
+                    margin_used=margin_check['margin_required'],
+                    expected_profit=expected_profit,
+                    expected_loss=expected_loss,
+                    risk_reward_ratio=risk_reward_ratio,
+                    status="OPEN"
+                )
+                
+                self.performance_tracker.add_trade(trade_record)
+                self.daily_trades += 1
+                
+                logger.info(f"✅ ULTRA-REFINED TRADE EXECUTED:")
+                logger.info(f"   📊 {pair} {action} | Order ID: {order_id}")
+                logger.info(f"   💰 Position Size: {position_size} units")
+                logger.info(f"   🎯 Entry: {entry_price:.5f}")
+                logger.info(f"   🛡️  Stop Loss: {stop_loss:.5f} ({stop_pips:.1f} pips)")
+                logger.info(f"   🎯 Take Profit: {signal.target_price:.5f} ({target_pips:.1f} pips)")
+                logger.info(f"   📈 Risk/Reward: {risk_reward_ratio:.2f}")
+                logger.info(f"   💵 Expected P&L: +${expected_profit:.2f} / -${abs(expected_loss):.2f}")
+                
+                return order_id
+            
+        except Exception as e:
+            logger.error(f"❌ Error executing ultra-refined trade: {e}")
+            return None
+    
+    def real_time_monitoring_loop(self):
+        """Continuous monitoring loop for real-time updates."""
+        while not self.stop_monitoring:
+            try:
+                # Update MAE/MFE for open trades
+                open_positions = self.trader.get_open_positions()
+                
+                for position in open_positions:
+                    instrument = position['instrument']
+                    pair = instrument.replace('_', '/')
+                    current_price = self.get_current_price(pair)
+                    
+                    if current_price:
+                        trade_ids = position.get('tradeIDs', [])
+                        
+                        # Handle case where tradeIDs might be a single value instead of a list
+                        if isinstance(trade_ids, (str, int, float)):
+                            trade_ids = [trade_ids]
+                        elif not isinstance(trade_ids, list):
+                            trade_ids = []
+                            
+                        if trade_ids:
+                            self.performance_tracker.update_real_time_metrics(str(trade_ids[0]), current_price)
+                
+                # Update trailing stops
+                self.update_trailing_stops()
+                
+                # Check time-based exits
+                self.monitor_time_based_exits()
+                
+                # Sleep for 30 seconds before next update
+                time.sleep(30)
+                
+            except Exception as e:
+                logger.error(f"❌ Error in monitoring loop: {e}")
+                time.sleep(60)  # Wait longer on error
     
     def ultra_refined_trading_session(self):
         """Enhanced trading session with all improvements."""

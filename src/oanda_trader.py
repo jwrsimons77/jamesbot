@@ -391,8 +391,82 @@ class OANDATrader:
             # Convert pair format (EUR/USD -> EUR_USD)
             instrument = trade_order.pair.replace('/', '_')
             
+            # Get current market prices to validate order levels
+            current_prices = self.get_bid_ask_prices(instrument)
+            if not current_prices:
+                logger.error(f"❌ Cannot get current market prices for {instrument}")
+                return None
+            
             # Determine units (positive for buy, negative for sell)
             units = trade_order.units if trade_order.signal_type == "BUY" else -trade_order.units
+            
+            # Validate and adjust levels based on current market prices
+            pip_size = 0.01 if 'JPY' in instrument else 0.0001
+            
+            # For BUY orders: use ASK price (we buy at ask)
+            # For SELL orders: use BID price (we sell at bid)
+            if trade_order.signal_type == "BUY":
+                current_price = current_prices['ask']
+                
+                # For BUY: TP must be above current ask, SL must be below current bid
+                if trade_order.target_price <= current_price:
+                    logger.error(f"❌ Take profit {trade_order.target_price:.5f} is below/at current ask {current_price:.5f}")
+                    logger.error(f"   Market has moved against the BUY signal")
+                    return None
+                    
+                if trade_order.stop_loss >= current_prices['bid']:
+                    logger.error(f"❌ Stop loss {trade_order.stop_loss:.5f} is above/at current bid {current_prices['bid']:.5f}")
+                    logger.error(f"   Market has moved against the BUY signal")
+                    return None
+                    
+            else:  # SELL
+                current_price = current_prices['bid']
+                
+                # For SELL: TP must be below current bid, SL must be above current ask
+                if trade_order.target_price >= current_price:
+                    logger.error(f"❌ Take profit {trade_order.target_price:.5f} is above/at current bid {current_price:.5f}")
+                    logger.error(f"   Market has moved against the SELL signal")
+                    return None
+                    
+                if trade_order.stop_loss <= current_prices['ask']:
+                    logger.error(f"❌ Stop loss {trade_order.stop_loss:.5f} is below/at current ask {current_prices['ask']:.5f}")
+                    logger.error(f"   Market has moved against the SELL signal")
+                    return None
+            
+            # Enhanced distance validation before placing order
+            if trade_order.signal_type == "BUY":
+                sl_distance_pips = abs(current_price - trade_order.stop_loss) / pip_size
+                tp_distance_pips = abs(trade_order.target_price - current_price) / pip_size
+            else:  # SELL
+                sl_distance_pips = abs(trade_order.stop_loss - current_price) / pip_size
+                tp_distance_pips = abs(current_price - trade_order.target_price) / pip_size
+            
+            # OANDA minimum distances - DRAMATICALLY INCREASED for CHF after multiple rejections
+            # CHF pairs are proving extremely difficult - using professional trading minimums
+            if 'CHF' in instrument:
+                min_sl_distance = 80   # CHF pairs: Increased to 80+ pips (was 50, still rejected)
+                min_tp_distance = 120  # CHF pairs: Increased to 120+ pips (was 60, still rejected)
+                logger.warning(f"⚠️ CHF pair detected - using extra-wide minimums: {min_sl_distance} SL, {min_tp_distance} TP")
+            elif 'JPY' in instrument:
+                min_sl_distance = 40   # JPY pairs: slightly increased
+                min_tp_distance = 70   # JPY pairs: increased for safety
+            else:
+                min_sl_distance = 30   # Standard for EUR/USD, GBP/USD, etc.
+                min_tp_distance = 60   # Standard TP distance
+            
+            if sl_distance_pips < min_sl_distance:
+                logger.error(f"❌ Stop loss too close: {sl_distance_pips:.1f} pips (need {min_sl_distance}+)")
+                return None
+                
+            if tp_distance_pips < min_tp_distance:
+                logger.error(f"❌ Take profit too close: {tp_distance_pips:.1f} pips (need {min_tp_distance}+)")
+                return None
+            
+            # Log current market conditions
+            logger.info(f"📊 Current market prices for {instrument}:")
+            logger.info(f"   Bid: {current_prices['bid']:.5f}")
+            logger.info(f"   Ask: {current_prices['ask']:.5f}")
+            logger.info(f"   Spread: {current_prices['spread_pips']:.1f} pips")
             
             # Format prices with correct precision for the instrument
             if 'JPY' in instrument:
@@ -578,6 +652,41 @@ class OANDATrader:
             
         except Exception as e:
             logger.error(f"Error getting current price for {instrument}: {e}")
+            return None
+
+    def get_bid_ask_prices(self, instrument: str) -> Optional[Dict]:
+        """Get current bid/ask prices for an instrument."""
+        try:
+            url = f"{self.base_url}/v3/accounts/{self.account_id}/pricing"
+            params = {"instruments": instrument}
+            
+            response = requests.get(url, headers=self.headers, params=params)
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data.get('prices'):
+                    price_info = data['prices'][0]
+                    bid = float(price_info['bids'][0]['price'])
+                    ask = float(price_info['asks'][0]['price'])
+                    mid_price = (bid + ask) / 2
+                    
+                    # Calculate spread in pips
+                    pip_size = 0.01 if 'JPY' in instrument else 0.0001
+                    spread_pips = (ask - bid) / pip_size
+                    
+                    return {
+                        'bid': bid,
+                        'ask': ask,
+                        'mid': mid_price,
+                        'spread_pips': spread_pips,
+                        'timestamp': price_info.get('time', '')
+                    }
+                    
+            logger.warning(f"Could not get bid/ask prices for {instrument}")
+            return None
+            
+        except Exception as e:
+            logger.error(f"Error getting bid/ask prices for {instrument}: {e}")
             return None
 
     def send_trade_alert(self, trade_order: TradeOrder, order_id: str):
